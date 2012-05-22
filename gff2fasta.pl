@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 ###############################################################################
 #
 #    gff2fasta.pl
@@ -33,7 +33,8 @@ use Carp;
 #CPAN modules
 use Bio::SeqIO;
 use Bio::Perl;
-  
+use Bio::Tools::CodonTable;
+
 #locally-written modules
 
 BEGIN {
@@ -54,8 +55,10 @@ use constant {
 };
 
 # get input params and print copyright
-printAtStart();
 my $global_options = checkParams();
+if(!exists $global_options->{'silent'}) {
+    printAtStart();
+}
 
 ######################################################################
 # CODE HERE
@@ -64,8 +67,13 @@ my %global_gff_orfs = ();
 my %global_gff_non_orfs = ();
 my %global_lengths = ();
 my $global_reject_length = overrideDefault(50,'length');
-my $global_use_prot = overrideDefault(0,'protein');
 my $global_keep_non_orfs = overrideDefault(0, 'non_orfs');
+my $global_protein_code =  overrideDefault(0,'protein');
+if((0 != $global_keep_non_orfs) and (0 != $global_protein_code))
+{
+    print "**WARNING: $0 : non_orfs flag is invalid when translating into protein space --> ignoring\n";
+    $global_keep_non_orfs = 0;
+}
 my $global_line_wrap = overrideDefault(80,'wrap');
 
 # Read in the gff
@@ -102,7 +110,9 @@ while(my $sobj = $seqio->next_seq)
             # check if he's long enough
             if($length < $global_reject_length)
             {
-                print "Rejecting: $seqid -> ($start, $end) on $strand. $length is shorter than cutoff!\n";
+                if(!exists $global_options->{'silent'}) {
+                    print "Rejecting: $seqid -> ($start, $end) on $strand. $length is shorter than cutoff!\n";
+                }
                 next;
             }
 
@@ -110,19 +120,19 @@ while(my $sobj = $seqio->next_seq)
             if($strand eq "+")
             {
                 print $out_fh ">$seqid"."_$start"."_$end"."_F\n";
-                print $out_fh fasta_cut($this_seq, $global_use_prot);
+                print $out_fh fasta_cut($this_seq, $global_protein_code);
             }
             else
             {
                 print $out_fh ">$seqid"."_$start"."_$end"."_R\n";
-                print $out_fh fasta_cut(revcompl($this_seq), $global_use_prot);                
+                print $out_fh fasta_cut(revcompl($this_seq), $global_protein_code);                
             } 
         }
     }
     elsif(exists $global_options->{'include-nulls'})
     {
         # include anyway
-        print $out_fh ">$seqid"."_1_$seq_length"."_X\n".fasta_cut($seq, $global_use_prot);
+        print $out_fh ">$seqid"."_1_$seq_length"."_X\n".fasta_cut($seq, $global_protein_code);
     }
 }
 
@@ -142,7 +152,15 @@ sub fasta_cut {
     # Cut up a fasta sequence 
     #
     my ($string, $prot) =  @_;
-    if(1 == $prot) { $string  = translate_as_string($string); }
+    
+    # translate if need be
+    if(0 != $prot) 
+    { 
+        my $codon_table  = Bio::Tools::CodonTable -> new ( -id => $prot );
+        $string  = $codon_table->translate($string); 
+    }
+    
+    # wrap the line if need be
     if(0 != $global_line_wrap)
     {
         my $return_str = "";
@@ -166,7 +184,7 @@ sub fasta_cut {
 # PARAMETERS
 
 sub checkParams {
-    my @standard_options = ( "help|h+", "gff|g:s", "fasta|f:s", "out|o:s", "protein|p+", "include_nulls+", "length|l:i", "wrap|w:i", "non_orfs+" );
+    my @standard_options = ( "help|h+", "gff|g:s", "fasta|f:s", "out|o:s", "protein|p:i", "length|l:i", "wrap|w:i", "non_orfs+", "include_nulls+");
     my %options;
 
     # Add any other command line options, and the code to handle them
@@ -388,11 +406,33 @@ __DATA__
       -gff -g GFF                  GFF3 file to parse
       -fasta -f FASTA              Original fasta file
       -out -o FASTA                Multi fasta file to create
-      [-protein -p]                Output protein sequences
+      [-protein -p CODON_CODE]     Output protein sequences --> see below
       [-non_orfs]                  Process non-ORF regions [default: false]
+      [-include_nulls]             Transparently write through contigs with no genes [default: false] 
       [-wrap -w LEN]               Line wrap at LEN chars [default: 80] Set to 0 for no wrap
-      [-include_nulls]             Use this flag to keep all sequences which had no annotations
       [-length -l LENGTH]          Reject any orfs shorter than this length [default: 50]
       [-help -h]                   Displays basic usage information
+      
+      CODON_CODE
+      
+      Specify a number from the following list (Uses: Bio::Tools::CodonTable)
+      
+      1 Standard
+      2 Vertebrate Mitochondrial
+      3 Yeast Mitochondrial
+      4 Mold, Protozoan,_and_CoelenterateMitochondrial_and_Mycoplasma/Spiroplasma
+      5 Invertebrate Mitochondrial
+      6 Ciliate, Dasycladacean_and_Hexamita_Nuclear
+      9 Echinoderm Mitochondrial
+      10 Euplotid Nuclear
+      11 Bacterial
+      12 Alternative Yeast_Nuclear
+      13 Ascidian Mitochondrial
+      14 Flatworm Mitochondrial
+      15 Blepharisma Nuclear
+      16 Chlorophycean Mitochondrial
+      21 Trematode Mitochondrial
+      22 Scenedesmus obliquus_Mitochondrial
+      23 Thraustochytrium Mitochondrial
          
 =cut
