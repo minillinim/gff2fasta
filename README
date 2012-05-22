@@ -28,7 +28,9 @@
 *******************************************************************************
 
 A simple script. Can output protein or nucl sequences. Can also output all
-"non-ORF" regions too. USE: gff2fasta.pl -h for more info.
+"non-ORF" regions and contigs containing no ORFs too.
+
+SEE: gff2fasta.pl -h for more info.
 
 *******************************************************************************
 *******************************************************************************
