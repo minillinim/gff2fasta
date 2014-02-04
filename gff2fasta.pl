@@ -7,6 +7,8 @@
 #
 #    Copyright (C) Michael Imelfort
 #
+#    Edited: Kranti Konganti
+#
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
 #    the Free Software Foundation, either version 3 of the License, or
@@ -80,9 +82,11 @@ my $global_line_wrap = overrideDefault(80,'wrap');
 my $current_seq_id = "";
 my $gff_fh = openRead($global_options->{'gff'});
 while(<$gff_fh>){
-    my ($seqid, undef, undef, $start, $end,
-        undef, $strand, undef, undef) = split;
-    push @{$global_gff_orfs{$seqid}}, [$start, $end, $strand];
+    next if ($_ =~ m/^#/);
+    my ($seqid, undef, $feature, $start, $end,
+        undef, $strand, undef, $attributes) = split;
+    ($attributes) = ($attributes =~ m/(ID|Alias)=([^;]*)/i)[1];
+    push @{$global_gff_orfs{$seqid}}, [$start, $end, $strand, $attributes, $feature];
 }
 close $gff_fh;
 
@@ -102,7 +106,10 @@ while(my $sobj = $seqio->next_seq)
     {
         for(@{$global_gff_orfs{$seqid}})
         {
-            my ($start, $end, $strand) = @$_;
+            my ($start, $end, $strand, $attributes, $feature) = @$_;
+
+	    next if (defined $global_options->{'feature'} &&
+		     $global_options->{feature} !~ m/$feature/);
      
             # work out the length of the sub string
             my $length = $end - $start + 1;
@@ -116,15 +123,27 @@ while(my $sobj = $seqio->next_seq)
                 next;
             }
 
-            my $this_seq = substr($seq, $start-1, $length);
+            my $this_seq = substr($seq, $start-1, $length); 
             if($strand eq "+")
             {
-                print $out_fh ">$seqid"."_$start"."_$end"."_F\n";
+		if ($global_options->{'seq-desc'}) {
+		    print $out_fh ">$attributes | $seqid:$start-$end FORWARD\n";
+		}
+		else 
+		{
+		    print $out_fh ">$seqid"."_$start"."_$end"."_F\n";
+		}
                 print $out_fh fasta_cut($this_seq, $global_protein_code);
             }
             else
             {
-                print $out_fh ">$seqid"."_$start"."_$end"."_R\n";
+		if ($global_options->{'seq-desc'}) {
+                    print $out_fh ">$attributes | $seqid:$start-$end REVERSE\n";
+		}
+		else
+                {
+                    print $out_fh ">$seqid"."_$start"."_$end"."_R\n";
+		}
                 print $out_fh fasta_cut(revcompl($this_seq), $global_protein_code);                
             } 
         }
@@ -184,7 +203,17 @@ sub fasta_cut {
 # PARAMETERS
 
 sub checkParams {
-    my @standard_options = ( "help|h+", "gff|g:s", "fasta|f:s", "out|o:s", "protein|p:i", "length|l:i", "wrap|w:i", "non_orfs+", "include_nulls+");
+    my @standard_options = ( "help|h+",
+			     "gff|g:s",
+			     "fasta|f:s",
+			     "out|o:s",
+			     "protein|p:i",
+			     "length|l:i",
+			     "wrap|w:i",
+			     "non_orfs+",
+			     "include_nulls+",
+			     "seq-desc|d",
+			     "feature|fe=s");
     my %options;
 
     # Add any other command line options, and the code to handle them
@@ -364,6 +393,7 @@ print<<"EOF";
 ---------------------------------------------------------------- 
  $0
  Copyright (C) Michael Imelfort
+ Edited: Kranti Konganti
     
  This program comes with ABSOLUTELY NO WARRANTY;
  This is free software, and you are welcome to redistribute it
@@ -395,6 +425,12 @@ __DATA__
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+=head1 CHANGES
+
+=item * 02/04/2013
+
+   Fasta sequence headers now include either ID or Alias tags from gff files.
+    
 =head1 DESCRIPTION
 
    Convert a GFF file to fasta
@@ -409,6 +445,8 @@ __DATA__
       [-protein -p CODON_CODE]     Output protein sequences --> see below
       [-non_orfs]                  Process non-ORF regions [default: false]
       [-include_nulls]             Transparently write through contigs with no genes [default: false] 
+      [-seq-desc|d]                Use either ID or Alias attributes of GFF file as sequence identifiers
+      [-feature|fe gene]           Print fasta for only mentioned features. Example: gene or CDS or exon etc...
       [-wrap -w LEN]               Line wrap at LEN chars [default: 80] Set to 0 for no wrap
       [-length -l LENGTH]          Reject any orfs shorter than this length [default: 50]
       [-help -h]                   Displays basic usage information
@@ -436,3 +474,4 @@ __DATA__
       23 Thraustochytrium Mitochondrial
          
 =cut
+>>
